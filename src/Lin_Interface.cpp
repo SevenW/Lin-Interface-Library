@@ -10,6 +10,189 @@
 
 #include <Arduino.h>
 
+void Lin_Interface::setupSerial(void)
+{
+    Serial.printf("Serial settings to be applied: %d, %d, %d, %d\n", baud, SERIAL_8N1, rxPin, txPin);
+    // start UART
+    if (rxPin < 0 && txPin < 0)
+    {
+        // no custom pins are defined
+        HardwareSerial::begin(baud, SERIAL_8N1);
+    }
+    else
+    {
+        HardwareSerial::begin(baud, SERIAL_8N1, rxPin, txPin);
+        Serial.printf("Serial settings: %d, %d, %d, %d\n", baud, SERIAL_8N1, rxPin, txPin);
+    }
+}
+
+/// @brief listen to data on the linbus
+/// @details Start frame and read answer from bus device
+/// Listen until a frame or unanswered master request is recieved
+/// The received data will be passed to the Lin_Interface::LinMessage[] array
+/// Receives as much as possible, but maximum 8 data byte + checksum
+/// Verify Checksum according to LIN 2.0 rules
+/// Callback to decoder function
+/// @param LinDecoder_fptr decoder is the decoder functionpointer
+/// @returns verification of checksum was succesful
+bool Lin_Interface::listenBus(LinDecoder_fptr decoder)
+{
+    unsigned long timeout = 5; //ms
+    unsigned long timeoutAt = millis() + timeout;
+    uint8_t ProtectedID = 0x00;
+    bool ChecksumValid = false;
+    //setupSerial();
+    HardwareSerial::flush();
+
+    // wait for available data
+    bool timedOut = false;
+    while (!HardwareSerial::available() && !timedOut)
+    {
+        timedOut = (timeoutAt < millis());
+    }
+
+    // Break, Sync and ProtectedID will be received --> discard them
+    int bytes_received = -4;
+    while (HardwareSerial::available())
+    {
+         if (bytes_received >= (8 + 1)) // max 8x Data + 1x Checksum
+        {
+            // receive max 9 Bytes: 8 Data + 1 Chksum
+            break;
+        }
+        switch (bytes_received)
+        {
+        case -4: //??
+        case -3: // break = 0x00
+        case -2: // sync = 0x55
+        case -1: // Protected ID
+        {
+            // discard Break and Sync, detect PID
+            uint8_t buffer = HardwareSerial::read();
+            // Serial.printf("-%02X", buffer);
+            //  Sync and PID may to be verified here
+            if (buffer == 0x00)
+            { // break
+                bytes_received = -3;
+            }
+            else if ((buffer == 0x55) && (bytes_received == -3))
+            { // sync
+                bytes_received = -2;
+            }
+            else if ((buffer != 0x00) && (bytes_received == -3))
+            {
+                bytes_received = -4;
+            }
+            else if (bytes_received == -2)
+            { // PID
+                ProtectedID = buffer;
+                bytes_received = 0;
+            }
+            else
+            {
+                bytes_received = -4;
+            }
+            break;
+        }
+        default: // Data 0...7, Checksum
+            // Receive and save only Data Byte (send by slave)
+            LinMessage[bytes_received] = HardwareSerial::read();
+            // Serial.printf("*%02X", LinMessage[bytes_received]);
+            bytes_received++;
+        }
+        if (!HardwareSerial::available())
+            delay(2);
+    }
+
+#ifdef LINSIMULATION
+    if (timedOut)
+    {
+        //crete simulated frame
+        uint8_t buf[12] = {0xAB, 0x84, 0x1E, 0xF4, 0x2E, 0x84, 0x7A, 0x55, 0x00, 0x00, 0x00, 0x00};
+        uint8_t Id = 0x22;
+        memcpy(LinMessage, buf, 12);
+        LinMessageID = Id;
+        LinMessageSize = 9;
+        bytes_received = 9;
+        ProtectedID = Id;
+        LinMessage[8] = getChecksum(Id, bytes_received - 1);
+        timedOut = false;
+    }
+#endif
+
+    // erase data in buffer, in case a 9th or 10th Byte was received
+    // HardwareSerial::flush();
+    while (HardwareSerial::available())
+    {
+        HardwareSerial::read();
+        // Serial.printf(",%02X", HardwareSerial::read());
+        if (verboseMode > 0)
+        {
+            // Serial.print("additional byte discarded\n");
+            // Serial.print(".");
+        }
+    }
+
+    if (bytes_received > 0)
+    {
+        // verify Checksum
+        uint8_t Checksum = LinMessage[bytes_received - 1];
+        // bytes_received--;
+        ChecksumValid = (0xFF == (uint8_t)(Checksum + ~getChecksum(ProtectedID, bytes_received - 1)));
+        LinMessageSize = bytes_received;
+        LinMessageID = ProtectedID & 0x3F;
+        if ((decoder != nullptr) && ChecksumValid)
+        {
+            bool success = decoder(ProtectedID & 0x3F);
+        }
+    }
+    else
+    {
+        LinMessageSize = 0;
+        LinMessageID = ProtectedID & 0x3F;
+    }
+
+
+
+    // HardwareSerial::end();
+
+    if (verboseMode > 0)
+        {
+            if (timedOut)
+            {
+                Serial.printf("listenBus timed out\n");
+            }
+            else if (bytes_received < 0)
+            {
+                Serial.printf("no valid 0x00 0x55 PID header detected\n");
+            }
+            else
+            {
+                Serial.printf("00 55 %02X (%02X), ", ProtectedID & 0x3F, ProtectedID);
+                for (int i = 0; i < 8; ++i)
+                {
+                    if (i > bytes_received)
+                        break;
+                    Serial.printf("%02X ", LinMessage[i]);
+                }
+                if (bytes_received > 1)
+                {
+                    Serial.printf("|%02X ", LinMessage[bytes_received - 1]);
+                    if (!ChecksumValid)
+                    {
+                        Serial.printf("Checksum failed");
+                    }
+                    Serial.printf("\n");
+                }
+                else
+                {
+                    Serial.printf("no repsonse\n");
+                }
+            }
+        }
+    return ChecksumValid;
+} // bool listenBus()
+
 /// @brief reads data from a lin device by requesting a specific FrameID
 /// @details Start frame and read answer from bus device
 /// The received data will be passed to the Lin_Interface::LinMessage[] array

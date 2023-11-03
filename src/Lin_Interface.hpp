@@ -14,11 +14,13 @@
 
 #include <Arduino.h>
 
-class Lin_Interface : private HardwareSerial
+class Lin_Interface : protected HardwareSerial
 {
 public:
     //inherit constructor from HardwareSerial (Parameter: int uart_nr)
     using HardwareSerial::HardwareSerial;
+
+    typedef bool (*LinDecoder_fptr)(uint8_t);
 
     int verboseMode = -1;
     unsigned long baud = 19200;
@@ -27,7 +29,12 @@ public:
 
     // 8 Data Bytes + ChkSum + some space for receiving complete frames
     uint8_t LinMessage[8 + 1 + 4] = {0};
+    uint8_t LinMessageID = 0;
+    uint8_t LinMessageSize = 0;
 
+    // set up Serial communication for receiving data.
+    void setupSerial(void);
+    bool listenBus(LinDecoder_fptr);
     bool readFrame(uint8_t FrameID);
 
     void writeFrame(uint8_t FrameID, uint8_t datalen);
