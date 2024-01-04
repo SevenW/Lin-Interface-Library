@@ -32,10 +32,8 @@ void Lin_Interface::setupSerial(void)
 /// The received data will be passed to the Lin_Interface::LinMessage[] array
 /// Receives as much as possible, but maximum 8 data byte + checksum
 /// Verify Checksum according to LIN 2.0 rules
-/// Callback to decoder function
-/// @param LinDecoder_fptr decoder is the decoder functionpointer
 /// @returns verification of checksum was succesful
-bool Lin_Interface::listenBus(LinDecoder_fptr decoder)
+bool Lin_Interface::listenBus()
 {
     unsigned long timeout = 5; //ms
     unsigned long timeoutAt = millis() + timeout;
@@ -141,10 +139,6 @@ bool Lin_Interface::listenBus(LinDecoder_fptr decoder)
         ChecksumValid = (0xFF == (uint8_t)(Checksum + ~getChecksum(ProtectedID, bytes_received - 1)));
         LinMessageSize = bytes_received;
         LinMessageID = ProtectedID & 0x3F;
-        if ((decoder != nullptr) && ChecksumValid)
-        {
-            bool success = decoder(ProtectedID & 0x3F);
-        }
     }
     else
     {

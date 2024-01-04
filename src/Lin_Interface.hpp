@@ -20,8 +20,6 @@ public:
     //inherit constructor from HardwareSerial (Parameter: int uart_nr)
     using HardwareSerial::HardwareSerial;
 
-    typedef bool (*LinDecoder_fptr)(uint8_t);
-
     int verboseMode = -1;
     unsigned long baud = 19200;
     int8_t rxPin = -1;
@@ -34,7 +32,7 @@ public:
 
     // set up Serial communication for receiving data.
     void setupSerial(void);
-    bool listenBus(LinDecoder_fptr);
+    bool listenBus(void);
     bool readFrame(uint8_t FrameID);
 
     void writeFrame(uint8_t FrameID, uint8_t datalen);
