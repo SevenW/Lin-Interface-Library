@@ -40,7 +40,7 @@ void Lin_Interface::setupSerial(void)
         unsigned long timeoutAt = millis() + timeout;
         uint8_t ProtectedID = 0x00;
         bool ChecksumValid = false;
-        this->setupSerial();
+        Lin_Interface::setupSerial();
         HardwareSerial::flush();
 
         // wait for available data
