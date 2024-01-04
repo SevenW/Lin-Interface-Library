@@ -200,7 +200,7 @@ bool Lin_Interface::readFrame(uint8_t FrameID)
     bool ChecksumValid = false;
 
     startTransmission(ProtectedID);
-    HardwareSerial::flush();
+    //HardwareSerial::flush();
 
     // wait for available data
     delay(100);
